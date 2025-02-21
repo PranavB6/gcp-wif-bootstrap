@@ -30,9 +30,15 @@ WIF_PROVIDER_NAME="github-actions-provider"
 WIF_PROVIDER_DISPLAY_NAME="GitHub Actions Provider"
 WIF_PROVIDER_DESCRIPTION="Workload Identity Provider for GitHub Actions"
 WIF_PROVIDER_ISSUER_URI="https://token.actions.githubusercontent.com"
-WIF_PROVIDER_ATTRIBUTE_MAPPING="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.aud=assertion.aud,attribute.repository=assertion.repository"
+WIF_PROVIDER_ATTRIBUTE_MAPPING=(
+    "google.subject=assertion.sub"
+    "attribute.actor=assertion.actor"
+    "attribute.aud=assertion.aud"
+    "attribute.repository=assertion.repository"
+    "attribute.repository_owner=assertion.repository_owner"
+)
+# Attribute Condition Example for multiple owners: "attribute.repository_owner == '<Owner1>' || attribute.repository_owner == '<Owner2>/')"
 WIF_PROVIDER_ATTRIBUTE_CONDITION=""
-# Attribute Condition Example for multiple owners: "attribute.repository.startsWith('<Owner1>/') || attribute.repository.startsWith('<Owner2>/')"
 
 # ----- GitHub Actions -----
 
@@ -52,6 +58,7 @@ REQUIRED_ROLES_FOR_AUTHENTICATED_USER=("roles/iam.serviceAccountAdmin" "roles/se
 declare -A COLORS
 COLORS=(
     ["RED"]='\033[31m'
+    ["BLUE"]='\033[34m'
     ["GREEN"]='\033[32m'
     ["GRAY"]='\033[90m'
     ["RESET"]='\033[0m'
@@ -64,6 +71,11 @@ COLORS=(
 echo_success() {
     local message="$1"
     echo -e "${COLORS[GREEN]}[SUCCESS] ${message}${RESET}"
+}
+
+echo_info() {
+    local message="$1"
+    echo -e "${COLORS[BLUE]}[INFO] ${message}${RESET}"
 }
 
 trace_command() {
@@ -113,10 +125,16 @@ echo_success "Enabled Identity and Access Management (IAM) API"
 # Create Service Account
 # ------------------------------------------------------------
 
-trace_command gcloud iam service-accounts create ${SERVICE_ACCOUNT_NAME} \
-    --description="${SERVICE_ACCOUNT_DESCRIPTION}" \
-    --display-name="${SERVICE_ACCOUNT_DISPLAY_NAME}"
-echo_success "Created Service Account '${SERVICE_ACCOUNT_NAME}'"
+# Check if the service account already exists
+if gcloud iam service-accounts describe "${SERVICE_ACCOUNT_EMAIL}" &>/dev/null; then
+    echo_info "Service Account '${SERVICE_ACCOUNT_NAME}' already exists"
+else
+    # Create the service account if it does not exist
+    trace_command gcloud iam service-accounts create ${SERVICE_ACCOUNT_NAME} \
+        --description="${SERVICE_ACCOUNT_DESCRIPTION}" \
+        --display-name="${SERVICE_ACCOUNT_DISPLAY_NAME}"
+    echo_success "Created Service Account '${SERVICE_ACCOUNT_NAME}'"
+fi
 
 # Assign roles to the service account
 for role in "${SERVICE_ACCOUNT_ROLES[@]}"; do
@@ -139,6 +157,9 @@ trace_command gcloud iam workload-identity-pools create ${WIF_POOL_NAME} \
     --description="${WIF_POOL_DESCRIPTION}"
 echo_success "Created Workload Identity Pool '${WIF_POOL_NAME}'"
 
+# Concat attribute mappings into a comma separated string
+ATTRIBUTE_MAPPING=$(IFS=','; echo "${WIF_PROVIDER_ATTRIBUTE_MAPPING[*]}")
+
 # Create Workload Identity Provider
 trace_command gcloud iam workload-identity-pools providers create-oidc ${WIF_PROVIDER_NAME} \
     --project="${PROJECT_ID}" \
@@ -147,7 +168,7 @@ trace_command gcloud iam workload-identity-pools providers create-oidc ${WIF_PRO
     --display-name="${WIF_PROVIDER_DISPLAY_NAME}" \
     --description="${WIF_PROVIDER_DESCRIPTION}" \
     --issuer-uri="${WIF_PROVIDER_ISSUER_URI}" \
-    --attribute-mapping="${WIF_PROVIDER_ATTRIBUTE_MAPPING}" \
+    --attribute-mapping="${ATTRIBUTE_MAPPING}" \
     --attribute-condition="${WIF_PROVIDER_ATTRIBUTE_CONDITION}"
 echo_success "Created Workload Identity Provider '${WIF_PROVIDER_NAME}'"
 
