@@ -10,6 +10,7 @@ set -e
 
 # ----- Project -----
 PROJECT_ID=""
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
 AUTHENTICATED_USER_EMAIL=$(gcloud auth list --filter=status:ACTIVE --format='value(account)')
 ROLES_FOR_AUTHENTICATED_USER=()
 
@@ -78,6 +79,12 @@ echo_info() {
     echo -e "${COLORS[BLUE]}[INFO] ${message}${RESET}"
 }
 
+echo_error() {
+    local message="$1"
+    echo -e "${COLORS[RED]}[ERROR] ${message}${RESET}"
+}
+
+
 trace_command() {
     local func="$1"
     local args=("${@:2}")
@@ -93,15 +100,35 @@ trace_command() {
 }
 
 # ============================================================
+# Validate Configuration
+# ------------------------------------------------------------
+
+if [ -z "$PROJECT_ID" ]; then
+    echo_error "'Project ID' is not configured."
+    exit 1
+fi
+
+if [ -z "$PROJECT_NUMBER" ]; then
+    echo_error "'Project Number' is not configured."
+    exit 1
+fi
+
+if [ -z "$WIF_PROVIDER_ATTRIBUTE_CONDITION" ]; then
+    echo_error "'WIF Provider Attribute Condition' is not configured."
+    exit 1
+fi
+
+if [ ${#GITHUB_REPOSITORIES_AUTHORIZED_FOR_IMPERSONATION[@]} -eq 0 ]; then
+    echo_error "'GitHub Repositories Authorized For Impersonation' is not configured."
+    exit 1
+fi
+
+# ============================================================
 # Setup gcloud CLI
 # ------------------------------------------------------------
 
 trace_command gcloud config set project "${PROJECT_ID}"
 echo_success "Project set to ${PROJECT_ID}"
-
-# Retrieve the GCP project number
-PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
-echo_success "Retrieved Project Number: ${PROJECT_NUMBER}"
 
 MERGED_ROLES=("${REQUIRED_ROLES_FOR_AUTHENTICATED_USER[@]}" "${ROLES_FOR_AUTHENTICATED_USER[@]}")
 
